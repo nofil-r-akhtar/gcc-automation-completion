@@ -9,7 +9,8 @@ import subprocess
 import sys
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["https://nofil-r-akhtar.github.io/gcc-automation-completion-interface/"])
+
 
 # Define a fixed extraction folder for both local and production
 UPLOAD_FOLDER = Path("/tmp/uploads")  # /tmp is safe in Railway/Render
