@@ -1,78 +1,78 @@
-from flask import Flask, request, jsonify, url_for
-from flask_cors import CORS  # Import CORS
+from flask import Flask, request, jsonify, url_for, send_file
+from flask_cors import CORS
 import zipfile
 import shutil
 from pathlib import Path
+import pandas as pd
 import os
 import subprocess
 import sys
-import pandas as pd
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app)
+
+# Define a fixed extraction folder for both local and production
+UPLOAD_FOLDER = Path("/tmp/uploads")  # /tmp is safe in Railway/Render
+UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
 @app.route("/clean-automated-csv", methods=["POST"])
 def extract_and_clean_zip():
     try:
-        # Get uploaded file, extraction path, and filter from form
         zip_file = request.files.get("zip_file")
-        extract_to = request.form.get("extract_to")
-        completed_filter = request.form.get("completed_filter", "yes").strip().lower()  # default "yes"
+        completed_filter = request.form.get("completed_filter", "yes").strip().lower()
 
-        if not zip_file or not extract_to:
-            return jsonify({"error": "zip_file and extract_to are required"}), 400
+        if not zip_file:
+            return jsonify({"error": "zip_file is required"}), 400
         if completed_filter not in ["yes", "no"]:
             return jsonify({"error": "completed_filter must be 'yes' or 'no'"}), 400
 
-        # Ensure the extraction directory exists
-        extract_path = Path(extract_to)
-        extract_path.mkdir(parents=True, exist_ok=True)
+        # Clear old files
+        for old_file in UPLOAD_FOLDER.glob("*"):
+            old_file.unlink()
 
-        # Save uploaded zip file temporarily
-        temp_zip_path = extract_path / zip_file.filename
+        # Save uploaded zip
+        temp_zip_path = UPLOAD_FOLDER / zip_file.filename
         with open(temp_zip_path, "wb") as buffer:
             shutil.copyfileobj(zip_file.stream, buffer)
 
-        # Extract the zip file
+        # Extract zip
         with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
-            zip_ref.extractall(extract_path)
-        temp_zip_path.unlink()  # remove the zip
+            zip_ref.extractall(UPLOAD_FOLDER)
+        temp_zip_path.unlink()
 
-        # Find specialization-report CSV file
+        # Find specialization CSV
         specialization_file = None
-        for file in extract_path.rglob("*.csv"):
+        for file in UPLOAD_FOLDER.rglob("*.csv"):
             if "specialization-report" in file.name.lower():
                 specialization_file = file
                 break
         if not specialization_file:
-            return jsonify({"error": "specialization-report CSV not found in extracted files"}), 404
+            return jsonify({"error": "specialization-report CSV not found"}), 404
 
-        # Load CSV into pandas
         df = pd.read_csv(specialization_file)
 
-        # Step 1: Remove rows where "Removed From Program" = "Yes"
+        # Remove unwanted rows
         if "Removed From Program" in df.columns:
             df = df[df["Removed From Program"].str.strip().str.lower() != "yes"]
 
-        # Step 2: Drop unwanted columns
+        # Drop columns
         drop_columns = [
             "External Id", "Specialization Slug", "University", "Enrollment Time",
             "Last Specialization Activity Time", "# Completed Courses", "# Courses in Specialization",
             "Removed From Program", "Program Slug", "Enrollment Source",
             "Specialization Completion Time", "Specialization Certificate URL"
         ]
-        df = df.drop(columns=[col for col in drop_columns if col in df.columns], errors="ignore")
+        df = df.drop(columns=[c for c in drop_columns if c in df.columns], errors="ignore")
 
-        # Step 3: Apply completion filter logic
+        # Filter completed/no
         if "Completed" not in df.columns:
-            return jsonify({"error": "'Completed' column is missing in CSV"}), 400
+            return jsonify({"error": "'Completed' column missing"}), 400
 
         if completed_filter == "yes":
             df = df[df["Completed"].str.strip().str.lower() == "yes"]
             if "Email" in df.columns:
                 df = df.drop_duplicates(subset=["Email"], keep="first")
-
-        elif completed_filter == "no":
+        else:
             df_yes = df[df["Completed"].str.strip().str.lower() == "yes"]
             df_no = df[df["Completed"].str.strip().str.lower() != "yes"]
             if "Email" in df.columns:
@@ -81,9 +81,8 @@ def extract_and_clean_zip():
                 df_no = df_no.drop_duplicates(subset=["Email"], keep="first")
             df = df_no
 
-        # Step 4: Count male/female (only for completed_filter = "yes")
-        male_count = 0
-        female_count = 0
+        # Count male/female if yes
+        male_count = female_count = 0
         if completed_filter == "yes" and "Program Name" in df.columns:
             for program in df["Program Name"].dropna():
                 prog_lower = program.lower()
@@ -93,20 +92,10 @@ def extract_and_clean_zip():
                     male_count += 1
 
         # Save cleaned CSV
-        cleaned_file_path = extract_path / f"specialization-report-cleaned-{completed_filter}.csv"
+        cleaned_file_path = UPLOAD_FOLDER / f"specialization-report-cleaned-{completed_filter}.csv"
         df.to_csv(cleaned_file_path, index=False)
 
-        # Try opening the cleaned CSV (ignored on servers)
-        try:
-            if sys.platform.startswith("win"):
-                os.startfile(cleaned_file_path)
-            elif sys.platform.startswith("darwin"):
-                subprocess.run(["open", cleaned_file_path])
-            else:
-                subprocess.run(["xdg-open", cleaned_file_path])
-        except Exception:
-            pass
-
+        # Build download link
         file_url = url_for('download_file', filename=cleaned_file_path.name, _external=True)
 
         return jsonify({
@@ -120,9 +109,14 @@ def extract_and_clean_zip():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
 
 @app.route("/download/<filename>")
 def download_file(filename):
-    return send_file(Path(extract_to) / filename, as_attachment=True)
+    file_path = UPLOAD_FOLDER / filename
+    if not file_path.exists():
+        return jsonify({"error": "File not found"}), 404
+    return send_file(file_path, as_attachment=True)
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
