@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, url_for
 from flask_cors import CORS  # Import CORS
 import zipfile
 import shutil
@@ -107,9 +107,11 @@ def extract_and_clean_zip():
         except Exception:
             pass
 
+        file_url = url_for('download_file', filename=cleaned_file_path.name, _external=True)
+
         return jsonify({
-            "message": f"Zip extracted and cleaned CSV saved to {cleaned_file_path}",
-            "cleaned_csv": str(cleaned_file_path),
+            "message": "Processing complete",
+            "download_url": file_url,
             "rows_after_cleaning": len(df),
             "male_completed": male_count if completed_filter == "yes" else None,
             "female_completed": female_count if completed_filter == "yes" else None
@@ -120,3 +122,7 @@ def extract_and_clean_zip():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
+@app.route("/download/<filename>")
+def download_file(filename):
+    return send_file(Path(extract_to) / filename, as_attachment=True)
