@@ -111,6 +111,7 @@ def extract_and_clean_zip():
 
 
 @app.route("/download/<filename>")
+@cross_origin()
 def download_file(filename):
     file_path = UPLOAD_FOLDER / filename
     if not file_path.exists():
