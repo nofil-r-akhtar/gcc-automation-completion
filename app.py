@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS  # Import CORS
 import zipfile
 import shutil
 from pathlib import Path
@@ -8,6 +9,7 @@ import sys
 import pandas as pd
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
 @app.route("/clean-automated-csv", methods=["POST"])
 def extract_and_clean_zip():
@@ -66,26 +68,17 @@ def extract_and_clean_zip():
             return jsonify({"error": "'Completed' column is missing in CSV"}), 400
 
         if completed_filter == "yes":
-            # Keep only completed = yes
             df = df[df["Completed"].str.strip().str.lower() == "yes"]
-
-            # Deduplicate by Email (keep first occurrence)
             if "Email" in df.columns:
                 df = df.drop_duplicates(subset=["Email"], keep="first")
 
         elif completed_filter == "no":
-            # Separate yes and no completions
             df_yes = df[df["Completed"].str.strip().str.lower() == "yes"]
             df_no = df[df["Completed"].str.strip().str.lower() != "yes"]
-
             if "Email" in df.columns:
-                # Remove any learner from df_no who has a yes completion in df_yes
                 learners_with_yes = set(df_yes["Email"].dropna())
                 df_no = df_no[~df_no["Email"].isin(learners_with_yes)]
-
-                # Deduplicate remaining no records
                 df_no = df_no.drop_duplicates(subset=["Email"], keep="first")
-
             df = df_no
 
         # Step 4: Count male/female (only for completed_filter = "yes")
@@ -103,7 +96,7 @@ def extract_and_clean_zip():
         cleaned_file_path = extract_path / f"specialization-report-cleaned-{completed_filter}.csv"
         df.to_csv(cleaned_file_path, index=False)
 
-        # Open the cleaned CSV
+        # Try opening the cleaned CSV (ignored on servers)
         try:
             if sys.platform.startswith("win"):
                 os.startfile(cleaned_file_path)
@@ -112,7 +105,7 @@ def extract_and_clean_zip():
             else:
                 subprocess.run(["xdg-open", cleaned_file_path])
         except Exception:
-            pass  # Ignore if auto-opening fails
+            pass
 
         return jsonify({
             "message": f"Zip extracted and cleaned CSV saved to {cleaned_file_path}",
@@ -124,7 +117,6 @@ def extract_and_clean_zip():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 400
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
