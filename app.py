@@ -6,7 +6,10 @@ from pathlib import Path
 import pandas as pd
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={
+    r"/download-cleaned/*": {"origins": "*"},   # allow CSV download links
+    r"/process": {"origins": "*"}               # your main processing endpoint
+})
 
 UPLOAD_FOLDER = Path("/tmp/uploads")
 UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
