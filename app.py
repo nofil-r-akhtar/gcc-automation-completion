@@ -118,15 +118,14 @@ def extract_and_clean_zip():
 
 
 # Optional endpoint to serve file if you want frontend download from "download_url"
-@app.route("/download-cleaned/<filename>")
-def download_cleaned_file(filename):
-    file_path = UPLOAD_FOLDER / filename
-    if not file_path.exists():
-        return jsonify({"error": "file not found"}), 404
-    return Response(
-        file_path.read_bytes(),
-        mimetype="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
+@app.route('/download/<filename>')
+def download_file(filename):
+    file_path = Path("cleaned_files") / filename
+    return send_file(
+        file_path,
+        as_attachment=True,   # 🔑 Forces download
+        download_name=filename,  # Suggested filename
+        mimetype='text/csv'
     )
 
 
