@@ -4,12 +4,12 @@ import zipfile
 import shutil
 from pathlib import Path
 import pandas as pd
+from werkzeug.middleware.proxy_fix import ProxyFix  
 
 app = Flask(__name__)
-CORS(app, resources={
-    r"/download-cleaned/*": {"origins": "*"},   # allow CSV download links
-    r"/process": {"origins": "*"}               # your main processing endpoint
-})
+CORS(app, resources={r"/download-cleaned/*": {"origins": "*"}})
+
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 UPLOAD_FOLDER = Path("/tmp/uploads")
 UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
