@@ -103,14 +103,14 @@ def extract_and_clean_zip():
                 "rows_after_cleaning": len(df),
                 "male_completed": male_count,
                 "female_completed": female_count,
-                "download_url": f"/download-cleaned/{cleaned_file_name}"
+                "download_url": f"{request.host_url}download-cleaned/{cleaned_file_name}"
             })
 
         # If filter is NO → return CSV file directly
         return jsonify({
             "message": "Processing complete",
             "rows_after_cleaning": len(df),
-            "download_url": f"/download-cleaned/{cleaned_file_name}"
+            "download_url": f"{request.host_url}download-cleaned/{cleaned_file_name}"
         })
 
     except Exception as e:
