@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import zipfile
 import shutil
@@ -117,14 +117,16 @@ def extract_and_clean_zip():
         return jsonify({"error": str(e)}), 400
 
 
-# Optional endpoint to serve file if you want frontend download from "download_url"
-@app.route('/download/<filename>')
+@app.route('/download-cleaned/<filename>')
 def download_file(filename):
-    file_path = Path("cleaned_files") / filename
+    file_path = UPLOAD_FOLDER / filename
+    if not file_path.exists():
+        return jsonify({"error": "File not found"}), 404
+
     return send_file(
         file_path,
-        as_attachment=True,   # 🔑 Forces download
-        download_name=filename,  # Suggested filename
+        as_attachment=True,   # forces download
+        download_name=filename,  # correct filename
         mimetype='text/csv'
     )
 
