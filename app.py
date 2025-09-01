@@ -1,10 +1,9 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import zipfile
 import shutil
 from pathlib import Path
 import pandas as pd
-import base64
 
 app = Flask(__name__)
 CORS(app)
@@ -78,33 +77,57 @@ def extract_and_clean_zip():
                 df_no = df_no.drop_duplicates(subset=["Email"], keep="first")
             df = df_no
 
-        # Count male/female if yes
-        male_count = female_count = None
-        if completed_filter == "yes" and "Program Name" in df.columns:
-            male_count = 0
-            female_count = 0
-            for program in df["Program Name"].dropna():
-                prog_lower = program.lower()
-                if "female" in prog_lower:
-                    female_count += 1
-                elif "male" in prog_lower:
-                    male_count += 1
-
-        # Convert CSV to base64
+        # Convert CSV to bytes
         csv_bytes = df.to_csv(index=False).encode("utf-8")
-        csv_base64 = base64.b64encode(csv_bytes).decode("utf-8")
 
+        # Always save file to disk (so it exists for /download-cleaned)
+        cleaned_file_name = f"specialization-report-cleaned-{completed_filter}.csv"
+        cleaned_file_path = UPLOAD_FOLDER / cleaned_file_name
+        with open(cleaned_file_path, "wb") as f:
+            f.write(csv_bytes)
+
+
+        # If filter is YES → return JSON (counts) + CSV file for download
+        if completed_filter == "yes":
+            male_count = female_count = 0
+            if "Program Name" in df.columns:
+                for program in df["Program Name"].dropna():
+                    prog_lower = program.lower()
+                    if "female" in prog_lower:
+                        female_count += 1
+                    elif "male" in prog_lower:
+                        male_count += 1
+
+            return jsonify({
+                "message": "Processing complete",
+                "rows_after_cleaning": len(df),
+                "male_completed": male_count,
+                "female_completed": female_count,
+                "download_url": f"/download-cleaned/{cleaned_file_name}"
+            })
+
+        # If filter is NO → return CSV file directly
         return jsonify({
             "message": "Processing complete",
             "rows_after_cleaning": len(df),
-            "male_completed": male_count,
-            "female_completed": female_count,
-            "file_name": f"specialization-report-cleaned-{completed_filter}.csv",
-            "file_data": csv_base64
+            "download_url": f"/download-cleaned/{cleaned_file_name}"
         })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
+
+# Optional endpoint to serve file if you want frontend download from "download_url"
+@app.route("/download-cleaned/<filename>")
+def download_cleaned_file(filename):
+    file_path = UPLOAD_FOLDER / filename
+    if not file_path.exists():
+        return jsonify({"error": "file not found"}), 404
+    return Response(
+        file_path.read_bytes(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 if __name__ == "__main__":
