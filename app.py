@@ -27,7 +27,10 @@ def extract_and_clean_zip():
 
         # Clear old files
         for old_file in UPLOAD_FOLDER.glob("*"):
-            old_file.unlink()
+            if old_file.is_file():
+                old_file.unlink()
+            elif old_file.is_dir():
+                shutil.rmtree(old_file)
 
         # Save uploaded zip
         temp_zip_path = UPLOAD_FOLDER / zip_file.filename
@@ -39,10 +42,15 @@ def extract_and_clean_zip():
             zip_ref.extractall(UPLOAD_FOLDER)
         temp_zip_path.unlink()
 
-        # Find specialization CSV
+        # Cleanup unwanted system dirs (like __MACOSX)
+        for junk in UPLOAD_FOLDER.rglob("__MACOSX"):
+            if junk.is_dir():
+                shutil.rmtree(junk)
+
+        # Find specialization CSV (ignore junk)
         specialization_file = None
         for file in UPLOAD_FOLDER.rglob("*.csv"):
-            if "specialization-report" in file.name.lower():
+            if file.is_file() and "specialization-report" in file.name.lower():
                 specialization_file = file
                 break
         if not specialization_file:
@@ -54,7 +62,7 @@ def extract_and_clean_zip():
         if "Removed From Program" in df.columns:
             df = df[df["Removed From Program"].str.strip().str.lower() != "yes"]
 
-        # Drop columns
+        # Drop unnecessary columns
         drop_columns = [
             "External Id", "Specialization Slug", "University", "Enrollment Time",
             "Last Specialization Activity Time", "# Completed Courses", "# Courses in Specialization",
@@ -89,7 +97,6 @@ def extract_and_clean_zip():
         with open(cleaned_file_path, "wb") as f:
             f.write(csv_bytes)
 
-
         # If filter is YES → return JSON (counts) + CSV file for download
         if completed_filter == "yes":
             male_count = female_count = 0
@@ -109,7 +116,7 @@ def extract_and_clean_zip():
                 "download_url": f"{request.host_url}download-cleaned/{cleaned_file_name}"
             })
 
-        # If filter is NO → return CSV file directly
+        # If filter is NO → return JSON + download link
         return jsonify({
             "message": "Processing complete",
             "rows_after_cleaning": len(df),
