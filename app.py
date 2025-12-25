@@ -48,15 +48,29 @@ def extract_and_clean_zip():
                 shutil.rmtree(junk)
 
         # Find specialization CSV (ignore junk)
+        #Coursera_Specialisation Activity_
         specialization_file = None
         for file in UPLOAD_FOLDER.rglob("*.csv"):
-            if file.is_file() and "specialization-report" in file.name.lower():
+            if file.is_file() and "coursera_specialisation activity_" in file.name.lower():
                 specialization_file = file
                 break
         if not specialization_file:
             return jsonify({"error": "specialization-report CSV not found"}), 404
 
         df = pd.read_csv(specialization_file)
+
+        #Fixing and Checking Completed Columns Values
+        if (
+            "# Completed Courses" in df.columns 
+            and "# Courses in Specialization" in df.columns 
+            and "Completed" in df.columns
+        ):
+            # Set Completed to "No" if courses completed < total courses but marked "Yes"
+            df.loc[
+                (df["# Completed Courses"] < df["# Courses in Specialization"]) & 
+                (df["Completed"].str.strip().str.lower() == "yes"),
+                "Completed"
+            ] = "No"
 
         # Remove unwanted rows
         if "Removed From Program" in df.columns:
@@ -127,7 +141,7 @@ def extract_and_clean_zip():
         return jsonify({"error": str(e)}), 400
 
 
-@app.route('/download-cleaned/<filename>')
+# @app.route('/download-cleaned/<filename>')
 def download_file(filename):
     file_path = UPLOAD_FOLDER / filename
     if not file_path.exists():
