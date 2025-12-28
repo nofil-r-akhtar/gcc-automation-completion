@@ -141,7 +141,7 @@ def extract_and_clean_zip():
         return jsonify({"error": str(e)}), 400
 
 
-# @app.route('/download-cleaned/<filename>')
+@app.route('/download-cleaned/<filename>')
 def download_file(filename):
     file_path = UPLOAD_FOLDER / filename
     if not file_path.exists():
